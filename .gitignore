@@ -31,5 +31,5 @@ Thumbs.db
 # GitHub events file
 github_events.json
 
-# PyInstaller spec file
+# PyInstaller spec files
 *.spec
