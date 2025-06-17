@@ -27,3 +27,6 @@ Thumbs.db
 # Environment variables
 .env
 .flaskenv
+
+# GitHub events file
+github_events.json
