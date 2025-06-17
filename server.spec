@@ -5,7 +5,7 @@ a = Analysis(
     ['server.py'],
     pathex=[],
     binaries=[],
-    datas=[('../../templates', 'templates')],
+    datas=[('templates', 'templates')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
