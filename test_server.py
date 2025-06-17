@@ -46,7 +46,7 @@ class TestAnalyzeFileChanges:
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = MagicMock(stdout="", stderr="")
             
-            result = await analyze_file_changes(working_dir=Path.cwd().as_posix())
+            result = await analyze_file_changes(working_directory=Path.cwd().as_posix())
             
             assert isinstance(result, str), "Should return a string"
             data = json.loads(result)
@@ -58,7 +58,7 @@ class TestAnalyzeFileChanges:
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = MagicMock(stdout="M\tfile1.py\n", stderr="")
             
-            result = await analyze_file_changes(working_dir=Path.cwd().as_posix())
+            result = await analyze_file_changes(working_directory=Path.cwd().as_posix())
             data = json.loads(result)
             
             # Check for specific expected fields

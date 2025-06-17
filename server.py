@@ -28,7 +28,7 @@ if getattr(sys, 'frozen', False):
     TEMPLATES_DIR = Path(sys._MEIPASS if hasattr(sys, '_MEIPASS') else Path(__file__).parent) / "templates"
 else:
     # Running in a regular Python environment
-    TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
+    TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 # File where webhook server stores events
 if getattr(sys, 'frozen', False):
