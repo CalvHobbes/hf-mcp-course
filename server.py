@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Module 1: Basic MCP Server - Starter Code
-TODO: Implement tools for analyzing git changes and suggesting PR templates
 """
 from dotenv import load_dotenv
 import json
@@ -31,9 +30,6 @@ else:
     TEMPLATES_DIR = Path(__file__).parent / "templates"
     EVENTS_FILE = Path("github_events.json")
 
-# # File where webhook server stores events
-# if getattr(sys, 'frozen', False):
-#     EVENTS_FILE = Path(os.getcwd()) / "github_events.json"
 
 
 # Default PR templates
@@ -338,6 +334,29 @@ async def get_workflow_status(workflow_name: Optional[str] = None) -> str:
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def send_slack_notification(message: str) -> str:
+    """Send a formatted notification to the team Slack channel.
+    
+    Args:
+        message: The message to send to Slack (supports Slack markdown)
+    """
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return "Error: SLACK_WEBHOOK_URL environment variable not set"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {"text": message, "mrkdwn": True}
+            async with session.post(webhook_url, json=payload) as response:
+                if response.status == 200:
+                    return f"Slack notification sent successfully: {message[:50]}..."
+                else:
+                    resp_text = await response.text()
+                    return f"Error sending Slack notification: {response.status} - {resp_text}"
+    except Exception as e:
+        return f"Error sending message: {str(e)}"
+
 
 # ===== New Module 2: MCP Prompts =====
 
@@ -466,6 +485,66 @@ Structure your response as:
 ### 📚 Resources
 - [Relevant documentation links]
 - [Similar issues or solutions]"""
+
+# ===== New Module 3: Slack Formatting Prompts =====
+
+@mcp.prompt()
+async def format_ci_failure_alert():
+    """Create a Slack alert for CI/CD failures with rich formatting."""
+    return """Format this GitHub Actions failure as a Slack message using ONLY Slack markdown syntax:
+
+❌ *CI Failed* - [Repository Name]
+
+> Brief summary of what failed
+
+*Details:*
+• Workflow: `workflow_name`
+• Branch: `branch_name`  
+• Commit: `commit_hash`
+
+*Next Steps:*
+• <https://github.com/test/repo/actions/runs/123|View Action Logs>
+
+CRITICAL: Use EXACT Slack link format: <https://full-url|Link Text>
+Examples:
+- CORRECT: <https://github.com/user/repo|Repository>
+- WRONG: [Repository](https://github.com/user/repo)
+- WRONG: https://github.com/user/repo
+
+Other Slack formats:
+- *text* for bold (NOT **text**)
+- `text` for code
+- > text for quotes
+- • for bullets"""
+
+
+@mcp.prompt()
+async def format_ci_success_summary():
+    """Create a Slack message celebrating successful deployments."""
+    return """Format this successful GitHub Actions run as a Slack message using ONLY Slack markdown syntax:
+
+✅ *Deployment Successful* - [Repository Name]
+
+> Brief summary of what was deployed
+
+*Changes:*
+• Key feature or fix 1
+• Key feature or fix 2
+
+*Links:*
+• <https://github.com/user/repo|View Changes>
+
+CRITICAL: Use EXACT Slack link format: <https://full-url|Link Text>
+Examples:
+- CORRECT: <https://github.com/user/repo|Repository>
+- WRONG: [Repository](https://github.com/user/repo)
+- WRONG: https://github.com/user/repo
+
+Other Slack formats:
+- *text* for bold (NOT **text**)
+- `text` for code
+- > text for quotes
+- • for bullets"""
 
 async def _get_git_changes(working_dir: str, base_branch: str, include_diff: bool, max_diff_lines: int) -> dict:
     """Helper function to get git changes and diff, callable outside of MCP context."""
