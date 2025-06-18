@@ -13,6 +13,7 @@ import os
 import sys
 from github import Github
 from typing import Optional
+import aiohttp
 
 from mcp.server.fastmcp import FastMCP
 load_dotenv()
@@ -26,15 +27,16 @@ if getattr(sys, 'frozen', False):
     # In one-file mode, sys._MEIPASS is the path to the temp directory where data is extracted
     # In one-folder mode, Path(__file__).parent is the app directory
     TEMPLATES_DIR = Path(sys._MEIPASS if hasattr(sys, '_MEIPASS') else Path(__file__).parent) / "templates"
+    EVENTS_FILE = Path("..") / "github_events.json"
 else:
     # Running in a regular Python environment
     TEMPLATES_DIR = Path(__file__).parent / "templates"
+    EVENTS_FILE = Path("github_events.json")
 
-# File where webhook server stores events
-if getattr(sys, 'frozen', False):
-    EVENTS_FILE = Path(os.getcwd()) / "github_events.json"
-else:
-    EVENTS_FILE = Path(__file__).parent / "github_events.json"
+# # File where webhook server stores events
+# if getattr(sys, 'frozen', False):
+#     EVENTS_FILE = Path(os.getcwd()) / "github_events.json"
+
 
 # Default PR templates
 DEFAULT_TEMPLATES = {
@@ -64,6 +66,17 @@ TYPE_MAPPING = {
     "security": "security.md"
 }
 
+EVENTS_URL = "http://localhost:8080/events"
+
+async def _get_events():
+    """Fetch events from the EVENTS_URL endpoint and return the JSON data asynchronously."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(EVENTS_URL) as response:
+                response.raise_for_status()
+                return await response.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch events: {e}"}
 
 @mcp.tool()
 async def analyze_file_changes(
@@ -277,18 +290,12 @@ async def get_recent_actions_events(limit: int = 10) -> str:
     Args:
         limit: Maximum number of events to return (default: 10)
     """
-    # 1. Check if EVENTS_FILE exists
-    if not EVENTS_FILE.exists():
-        return json.dumps([]) # 4. Return empty list if file doesn't exist
-
-    try:
-        # 2. Read the JSON file
-        with open(EVENTS_FILE, 'r') as f:
-            events = json.load(f)
-        # 3. Return the most recent events (up to limit)
-        return json.dumps(events[-limit:], indent=2)
-    except Exception as e:
-        return json.dumps({"error": f"Failed to read events file: {e}"})
+    events = await _get_events()
+    if isinstance(events, dict) and "error" in events:
+        return json.dumps(events)
+    if not events:
+        return json.dumps({"message": f"No GitHub Actions events received yet. Looked at {EVENTS_URL}"})
+    return json.dumps(events[-limit:], indent=2)
 
 
 @mcp.tool()
@@ -298,51 +305,40 @@ async def get_workflow_status(workflow_name: Optional[str] = None) -> str:
     Args:
         workflow_name: Optional specific workflow name to filter by
     """
-    # 1. Read events from EVENTS_FILE
-    if not EVENTS_FILE.exists():
-        return json.dumps({"message": "No GitHub Actions events received yet"})
+    events = await _get_events()
+    if isinstance(events, dict) and "error" in events:
+        return json.dumps(events)
+    if not events:
+        return json.dumps({"message": "No GitHub Actions events received yet. Looked at EVENTS_URL"})
+    workflow_statuses = {}
+    for event in events:
+        if event.get("event_type") == "workflow_run":
+            run = event.get("workflow_run", {})
+            workflow_id = run.get("workflow_id")
+            workflow_name_from_event = run.get("name")
+            status = run.get("status")
+            conclusion = run.get("conclusion")
+            html_url = run.get("html_url")
+            created_at = run.get("created_at")
 
-    try:
-        with open(EVENTS_FILE, 'r') as f:
-            events = json.load(f)
-
-        if not events:
-            return json.dumps({"message": "No GitHub Actions events received yet"})
-        workflow_statuses = {}
-        for event in events:
-            if event.get("event_type") == "workflow_run":
-                run = event.get("workflow_run", {})
-                workflow_id = run.get("workflow_id")
-                workflow_name_from_event = run.get("name")
-                status = run.get("status")
-                conclusion = run.get("conclusion")
-                html_url = run.get("html_url")
-                created_at = run.get("created_at")
-
-                if workflow_id and workflow_name_from_event and created_at:
-                    # Only consider if a specific workflow_name is provided and matches
-                    if workflow_name and workflow_name.lower() != workflow_name_from_event.lower():
-                        continue
-                        
-                    # Update if this is a newer run for the same workflow
-                    if workflow_id not in workflow_statuses or created_at > workflow_statuses[workflow_id]["created_at"]:
-                        workflow_statuses[workflow_id] = {
-                            "name": workflow_name_from_event,
-                            "status": status,
-                            "conclusion": conclusion,
-                            "url": html_url,
-                            "created_at": created_at
-                        }
-        
-        # Convert dictionary to a list of statuses
-        result = list(workflow_statuses.values())
-        # Sort by creation date (most recent first)
-        result.sort(key=lambda x: x["created_at"], reverse=True)
-
-        return json.dumps(result, indent=2)
-
-    except Exception as e:
-        return json.dumps({"error": f"Failed to get workflow status: {e}"})
+            if workflow_id and workflow_name_from_event and created_at:
+                # Only consider if a specific workflow_name is provided and matches
+                if workflow_name and workflow_name.lower() != workflow_name_from_event.lower():
+                    continue
+                # Update if this is a newer run for the same workflow
+                if workflow_id not in workflow_statuses or created_at > workflow_statuses[workflow_id]["created_at"]:
+                    workflow_statuses[workflow_id] = {
+                        "name": workflow_name_from_event,
+                        "status": status,
+                        "conclusion": conclusion,
+                        "url": html_url,
+                        "created_at": created_at
+                    }
+    # Convert dictionary to a list of statuses
+    result = list(workflow_statuses.values())
+    # Sort by creation date (most recent first)
+    result.sort(key=lambda x: x["created_at"], reverse=True)
+    return json.dumps(result, indent=2)
 
 
 # ===== New Module 2: MCP Prompts =====
