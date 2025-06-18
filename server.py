@@ -4,8 +4,6 @@ Module 1: Basic MCP Server - Starter Code
 TODO: Implement tools for analyzing git changes and suggesting PR templates
 """
 from dotenv import load_dotenv
-
-
 import json
 import subprocess
 from pathlib import Path
